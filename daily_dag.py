@@ -56,33 +56,35 @@ def dag_daily_belinskii():
         }
 
         q = """
-        WITH cte AS (
-        SELECT
-            receiver_id,
-            count() as total_accept,
-            uniqExact(user_id) as uniq_sender
-        FROM
-            simulator_20260120.message_actions
-        WHERE 
-            toDate(time) = today() - 1    
-        GROUP BY
-            receiver_id
-        )    
-    
-        SELECT 
-            user_id,
-            total_accept,
-            count() as total_send_message,
-            uniqExact(receiver_id) as uniq_recipient,
-            uniq_sender
-        FROM 
-            simulator_20260120.message_actions ma
-        JOIN cte
-            on cte.receiver_id = ma.user_id
-        WHERE 
-            toDate(time) = today() - 1
-        GROUP BY 
-            user_id, total_accept, uniq_sender, gender, os, age
+        WITH sent AS (
+			SELECT
+		        user_id,
+		        count() as total_send_message,
+		        uniqExact(receiver_id) as uniq_recipient
+		    FROM {db}.message_actions
+		    WHERE toDate(time) = today() - 1
+		    GROUP BY user_id
+		),
+
+		received AS (
+		    SELECT
+		        receiver_id as user_id,
+		        count() as total_accept,
+		        uniqExact(user_id) as uniq_sender
+		    FROM {db}.message_actions
+		    WHERE toDate(time) = today() - 1
+		    GROUP BY receiver_id
+		)
+
+		SELECT
+		    coalesce(sent.user_id, received.user_id) as user_id,
+		    total_send_message,
+		    uniq_recipient,
+		    total_accept,
+		    uniq_sender
+		FROM sent
+		FULL OUTER JOIN received
+		    ON sent.user_id = received.user_id
         """
 
         message_data = ph.read_clickhouse(q, connection=connection)
